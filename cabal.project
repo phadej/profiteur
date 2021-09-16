@@ -1,0 +1,5 @@
+packages: .
+
+package profiteur
+  flags: +embed-data-files
+

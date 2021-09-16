@@ -1,13 +1,16 @@
-# GHC=stack exec ghc --
+GHC=stack exec ghc --
+PROFITEUR=profiteur
+
 GHC=ghc-9.2.0.20210821
+PROFITEUR=/work/iohk/profiteur/dist-newstyle/build/x86_64-linux/ghc-8.6.5/profiteur-0.4.6.0/x/profiteur/build/profiteur/profiteur
 
 all : binary-trees.prof.html binary-trees.eventlog.html
 
 binary-trees.prof.html: binary-trees.prof
-	profiteur binary-trees.prof
+	$(PROFITEUR) binary-trees.prof
 
 binary-trees.eventlog.html: binary-trees.eventlog
-	profiteur binary-trees.eventlog
+	$(PROFITEUR) binary-trees.eventlog
 
 binary-trees.prof binary-trees.eventlog: binary-trees
 	./binary-trees 10 +RTS -l -p -RTS

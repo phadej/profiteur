@@ -13,15 +13,17 @@ import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import qualified Data.Text.Lazy.IO          as TL
 import           Data.Version               (showVersion)
+import           GHC.RTS.Events             (readEventLogFromFile)
 import           System.Environment         (getArgs, getProgName)
 import           System.Exit                (exitFailure)
-import           System.FilePath            (takeBaseName)
+import           System.FilePath            (takeBaseName, takeExtension)
 import qualified System.IO                  as IO
 
 
 --------------------------------------------------------------------------------
 import           Paths_profiteur            (version)
 import           Profiteur.Core
+import           Profiteur.Eventlog
 import           Profiteur.Parser
 import           Profiteur.DataFile
 
@@ -75,7 +77,10 @@ writeReport h profFile prof = do
 --------------------------------------------------------------------------------
 makeReport :: IO.Handle -> FilePath -> IO ()
 makeReport h profFile = do
-    profOrErr <- decode <$> TL.readFile profFile
+    profOrErr <-
+        if takeExtension profFile == ".eventlog"
+        then (>>= decodeEventlog) <$> readEventLogFromFile profFile
+        else decode <$> TL.readFile profFile
     case profOrErr of
         Right prof ->
             writeReport h profFile $ nodeMapFromCostCentre prof
