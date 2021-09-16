@@ -97,7 +97,7 @@ costCentres m0 cc0 = traceShowId
       where
         cc | VU.null ccid = mainCC
            | otherwise    = M.findWithDefault defaultCC (VU.last ccid) cc0
-        s =  M.findWithDefault zeroSample ccid m0
+        s =  M.findWithDefault zeroSample (VU.reverse ccid) m0
 
     ticksToTime :: Word64 -> S.Scientific
     ticksToTime ticks = S.fromFloatDigits (100 * fromIntegral ticks / totalTicks)
