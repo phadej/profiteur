@@ -7,3 +7,5 @@ example/binary-trees.hi
 example/binary-trees.o
 example/binary-trees.prof
 example/binary-trees.prof.html
+example/binary-trees.eventlog
+example/binary-trees.eventlog.html
