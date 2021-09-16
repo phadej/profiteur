@@ -9,18 +9,15 @@ module Profiteur.Eventlog
 
 import Data.Word (Word32, Word64)
 
-import qualified Data.IntMap.Strict as IM
-import qualified Data.List          as L
-import qualified Data.Map.Strict    as M
-import qualified Data.Set           as S
-import qualified Data.Text          as T
-import qualified GHC.Prof           as Prof
-import qualified GHC.Prof.Types     as Prof
-import qualified Profiteur.Eventlog.Prof     as Prof
-import qualified GHC.RTS.Events              as Ev
+import qualified Data.List                   as L
+import qualified Data.Map.Strict             as M
+import qualified Data.Scientific             as S
+import qualified Data.Text                   as T
+import qualified Data.Time                   as Time
 import qualified Data.Vector.Unboxed         as VU
-
-import qualified Data.Time as Time
+import qualified GHC.Prof                    as Prof
+import qualified GHC.RTS.Events              as Ev
+import qualified Profiteur.Eventlog.Prof     as Prof
 
 import Debug.Trace
 
@@ -62,7 +59,7 @@ accToProfile acc = Prof.Profile
         }
     , Prof.profileTotalAlloc     = Prof.TotalAlloc 0
     , Prof.profileTopCostCentres = [] -- we don't calculate these atm.
-    , Prof.profileCostCentreTree = Prof.buildTree [] -- TODO
+    , Prof.profileCostCentreTree = Prof.buildTree $ costCentres (accSamples acc) (accCostCentres acc)
     }
 
 addSample
@@ -71,6 +68,62 @@ addSample
     -> M.Map (VU.Vector CostCentreId) Sample
     -> M.Map (VU.Vector CostCentreId) Sample
 addSample stack ticks m = M.insertWith sampleAppend stack (Sample ticks 1) m
+
+-- | Convert accumulated data into list of levels and costcentres,
+-- so ghc-prof can build its CostCentreTree.
+costCentres
+    :: M.Map (VU.Vector CostCentreId) Sample
+    -> (M.Map CostCentreId CC)
+    -> [(Prof.Level, Prof.CostCentre)]
+costCentres m0 cc0 = traceShowId
+    [ (VU.length ccid, mkCostCentre n ccid as)
+    | (n, (ccid, as)) <- zip [1..] (M.toList accSampleMap)
+    ]
+  where
+    mkCostCentre :: Int -> VU.Vector CostCentreId -> AccSample -> Prof.CostCentre
+    mkCostCentre no ccid as = Prof.CostCentre
+        { Prof.costCentreNo       = no
+        , Prof.costCentreName     = ccLabel cc
+        , Prof.costCentreModule   = ccMod cc
+        , Prof.costCentreSrc      = Just (ccSrcLoc cc)
+        , Prof.costCentreEntries  = toInteger (sEntries s)
+        , Prof.costCentreIndTime  = ticksToTime (sTicks s)
+        , Prof.costCentreIndAlloc = 0 -- TODO
+        , Prof.costCentreInhTime  = ticksToTime (asTicks as)
+        , Prof.costCentreInhAlloc = 0 -- TODO
+        , Prof.costCentreTicks    = Just (toInteger (sTicks s))
+        , Prof.costCentreBytes    = Nothing -- TODO
+        }
+      where
+        cc = M.findWithDefault defaultCC (VU.last ccid) cc0
+        s =  M.findWithDefault zeroSample ccid m0
+
+    ticksToTime :: Word64 -> S.Scientific
+    ticksToTime ticks = S.fromFloatDigits (100 * fromIntegral ticks / totalTicks)
+
+    -- time (and allocation) are represented in percentages.
+    totalTicks :: Double
+    totalTicks = fromIntegral $ M.foldl' (\ !acc s -> acc + sTicks s) 0 m0
+
+    -- For each call stack we take partial callstacks and accumulate data.
+    accSampleMap :: M.Map (VU.Vector CostCentreId) AccSample
+    accSampleMap = M.foldlWithKey' f M.empty m0
+      where
+        f :: M.Map (VU.Vector CostCentreId) AccSample
+          -> VU.Vector CostCentreId
+          -> Sample
+          -> M.Map (VU.Vector CostCentreId) AccSample
+        f m ccid s = L.foldl' (\m' ccid' -> M.insertWith accSampleAppend ccid' as m') m (partialCallstacks ccid)
+          where
+            as = AccSample
+                { asTicks = sTicks s
+                }
+            
+-- | 
+partialCallstacks :: VU.Unbox a => VU.Vector a -> [VU.Vector a]
+partialCallstacks v = [ VU.take n v' | n <- [ 1 .. VU.length v ] ] where v' = VU.reverse v
+
+--------------------------------------------------------------------------------
 
 
 type CostCentreId = Word32
@@ -93,10 +146,17 @@ emptyAcc = Acc
 
 data CC = CC
     { ccLabel  :: !T.Text
-    , ccModule :: !T.Text
+    , ccMod    :: !T.Text
     , ccSrcLoc :: !T.Text
     }
   deriving Show
+
+defaultCC :: CC
+defaultCC = CC
+    { ccLabel  = "unknown"
+    , ccMod    = "unknown"
+    , ccSrcLoc = "UNKNOWN"
+    }
 
 data Sample = Sample
     { sTicks   :: !Word64
@@ -104,7 +164,18 @@ data Sample = Sample
     }
   deriving Show
 
+zeroSample :: Sample
+zeroSample = Sample 0 0
+
 sampleAppend :: Sample -> Sample -> Sample
 sampleAppend (Sample x1 x2) (Sample y1 y2) = Sample (x1 + y1) (x2 + y2)
+
+-- | Sum
+data AccSample = AccSample
+    { asTicks :: !Word64
+    }
+
+accSampleAppend :: AccSample -> AccSample -> AccSample
+accSampleAppend (AccSample x1) (AccSample y1) = AccSample (x1 + y1)
 
 --------------------------------------------------------------------------------
