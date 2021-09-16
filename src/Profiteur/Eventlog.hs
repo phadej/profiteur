@@ -42,7 +42,7 @@ one !acc ev = case Ev.evSpec ev of
     Ev.ProfBegin ti ->
         acc { accTickInterval = Just ti }
     Ev.HeapProfCostCentre ccid label m loc _flags ->
-        acc { accCostCentres = M.insert ccid (CC label m loc) (accCostCentres acc) }
+        acc { accCostCentres = M.insert ccid (CC label m loc) (accCostCentres acc) } -- TODO: read _flags whether the ccid is a CAF
     Ev.ProfSampleCostCentre _capset ticks _sd stack ->
         acc { accSamples = addSample stack ticks (accSamples acc) }
     _ -> acc
