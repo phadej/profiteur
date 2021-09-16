@@ -7,8 +7,7 @@ module Profiteur.Eventlog
 
 --------------------------------------------------------------------------------
 
-import Data.Maybe (fromMaybe)
-import Data.Word (Word32)
+import Data.Word (Word32, Word64)
 
 import qualified Data.IntMap.Strict as IM
 import qualified Data.List          as L
@@ -17,7 +16,9 @@ import qualified Data.Set           as S
 import qualified Data.Text          as T
 import qualified GHC.Prof           as Prof
 import qualified GHC.Prof.Types     as Prof
-import qualified GHC.RTS.Events     as Ev
+import qualified Profiteur.Eventlog.Prof     as Prof
+import qualified GHC.RTS.Events              as Ev
+import qualified Data.Vector.Unboxed         as VU
 
 import qualified Data.Time as Time
 
@@ -39,18 +40,20 @@ evlogToProfile ev = traceShow acc $ Right (accToProfile acc)
 
 one :: Acc -> Ev.Event -> Acc
 one !acc ev = case Ev.evSpec ev of
-    Ev.ProgramInvocation l ->
-        acc { accCommandLine = Just (T.pack l) }
+    Ev.ProgramArgs _ args ->
+        acc { accCommandLine = Just args }
+    Ev.ProfBegin ti ->
+        acc { accTickInterval = Just ti }
     Ev.HeapProfCostCentre ccid label m loc _flags ->
         acc { accCostCentres = M.insert ccid (CC label m loc) (accCostCentres acc) }
-    Ev.ProfBegin ti -> acc -- TODO: record tick interval
-    Ev.ProfSampleCostCentre _ ticks sd stack -> acc -- TODO: record sample
+    Ev.ProfSampleCostCentre _capset ticks _sd stack ->
+        acc { accSamples = addSample stack ticks (accSamples acc) }
     _ -> acc
 
 accToProfile :: Acc -> Prof.Profile
 accToProfile acc = Prof.Profile
     { Prof.profileTimestamp      = Time.LocalTime (Time.ModifiedJulianDay 0) (Time.TimeOfDay 0 0 0)
-    , Prof.profileCommandLine    = fromMaybe ""  (accCommandLine acc)
+    , Prof.profileCommandLine    = maybe "" T.unwords (accCommandLine acc)
     , Prof.profileTotalTime      = Prof.TotalTime
         { Prof.totalTimeElapsed    = 0
         , Prof.totalTimeTicks      = 0
@@ -59,25 +62,33 @@ accToProfile acc = Prof.Profile
         }
     , Prof.profileTotalAlloc     = Prof.TotalAlloc 0
     , Prof.profileTopCostCentres = [] -- we don't calculate these atm.
-    , Prof.profileCostCentreTree = Prof.CostCentreTree
-        { Prof.costCentreNodes     = IM.empty
-        , Prof.costCentreParents   = IM.empty
-        , Prof.costCentreChildren  = IM.empty
-        , Prof.costCentreCallSites = M.empty
-        , Prof.costCentreAggregate = M.empty
-        }
+    , Prof.profileCostCentreTree = Prof.buildTree [] -- TODO
     }
 
+addSample
+    :: VU.Vector Word32
+    -> Word64
+    -> M.Map (VU.Vector CostCentreId) Sample
+    -> M.Map (VU.Vector CostCentreId) Sample
+addSample stack ticks m = M.insertWith sampleAppend stack (Sample ticks 1) m
+
+
+type CostCentreId = Word32
+
 data Acc = Acc
-    { accCommandLine :: !(Maybe T.Text)
-    , accCostCentres :: !(M.Map Word32 CC)
+    { accCommandLine  :: !(Maybe [T.Text])   -- ^ The command-line arguments passed to the program. @PROGRAM_ARGS@
+    , accTickInterval :: !(Maybe Word64)     -- ^ tick interval in nanoseconds. @PROF_BEGIN@
+    , accCostCentres  :: !(M.Map CostCentreId CC)
+    , accSamples      :: !(M.Map (VU.Vector CostCentreId) Sample)
     }
   deriving Show
 
 emptyAcc :: Acc
 emptyAcc = Acc
-    { accCommandLine = Nothing
-    , accCostCentres = M.empty
+    { accCommandLine  = Nothing
+    , accTickInterval = Nothing
+    , accCostCentres  = M.empty
+    , accSamples      = M.empty
     }
 
 data CC = CC
@@ -86,5 +97,14 @@ data CC = CC
     , ccSrcLoc :: !T.Text
     }
   deriving Show
+
+data Sample = Sample
+    { sTicks   :: !Word64
+    , sEntries :: !Word64
+    }
+  deriving Show
+
+sampleAppend :: Sample -> Sample -> Sample
+sampleAppend (Sample x1 x2) (Sample y1 y2) = Sample (x1 + y1) (x2 + y2)
 
 --------------------------------------------------------------------------------

@@ -52,6 +52,7 @@ Executable profiteur
     Profiteur.DataFile
     Profiteur.DataFile.Internal
     Profiteur.Eventlog
+    Profiteur.Eventlog.Prof
     Paths_profiteur
 
   Build-depends:
