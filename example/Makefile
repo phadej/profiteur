@@ -13,7 +13,7 @@ binary-trees.eventlog.html: binary-trees.eventlog
 	$(PROFITEUR) binary-trees.eventlog
 
 binary-trees.prof binary-trees.eventlog: binary-trees
-	./binary-trees 10 +RTS -l -p -RTS
+	./binary-trees 10 +RTS -l -P -RTS
 
 binary-trees:
 	$(GHC) --make -eventlog -fprof-auto -prof -rtsopts binary-trees.hs

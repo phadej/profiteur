@@ -86,7 +86,7 @@ costCentres m0 cc0 = traceShowId
         , Prof.costCentreName     = ccLabel cc
         , Prof.costCentreModule   = ccMod cc
         , Prof.costCentreSrc      = Just (ccSrcLoc cc)
-        , Prof.costCentreEntries  = toInteger (sEntries s)
+        , Prof.costCentreEntries  = toInteger (sEntries s) -- no idea what this is
         , Prof.costCentreIndTime  = ticksToTime (sTicks s)
         , Prof.costCentreIndAlloc = 0 -- TODO
         , Prof.costCentreInhTime  = ticksToTime (asTicks as)
@@ -95,7 +95,8 @@ costCentres m0 cc0 = traceShowId
         , Prof.costCentreBytes    = Nothing -- TODO
         }
       where
-        cc = M.findWithDefault defaultCC (VU.last ccid) cc0
+        cc | VU.null ccid = mainCC
+           | otherwise    = M.findWithDefault defaultCC (VU.last ccid) cc0
         s =  M.findWithDefault zeroSample ccid m0
 
     ticksToTime :: Word64 -> S.Scientific
@@ -121,7 +122,7 @@ costCentres m0 cc0 = traceShowId
             
 -- | 
 partialCallstacks :: VU.Unbox a => VU.Vector a -> [VU.Vector a]
-partialCallstacks v = [ VU.take n v' | n <- [ 1 .. VU.length v ] ] where v' = VU.reverse v
+partialCallstacks v = [ VU.take n v' | n <- [ 0 .. VU.length v ] ] where v' = VU.reverse v
 
 --------------------------------------------------------------------------------
 
@@ -150,6 +151,14 @@ data CC = CC
     , ccSrcLoc :: !T.Text
     }
   deriving Show
+
+-- | Top level cost center
+mainCC :: CC
+mainCC = CC
+    { ccLabel  = "MAIN"
+    , ccMod    = "MAIN"
+    , ccSrcLoc = "<built-in>"
+    }
 
 defaultCC :: CC
 defaultCC = CC
