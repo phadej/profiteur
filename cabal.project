@@ -3,3 +3,8 @@ packages: .
 package profiteur
   flags: +embed-data-files
 
+source-repository-package
+  type: git
+  location: https://github.com/phadej/ghc-events2prof.git
+  tag: a8d042f4aa465413df001acf571b829158d4a2bf
+
